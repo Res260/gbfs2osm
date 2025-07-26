@@ -9,9 +9,16 @@ Most importantly, it ensures to *edit* existing bicycle rental stations in OSM r
 ones when possible. It does this by using the Overpass API to fetch existing stations and match them
 based on locations.
 
-Example usage:
+## Installation
+
+1. Install python 3.12+
+2. Install poetry `python -m pip install poetry`
+3. `poetry install`
+
+## Usage
+
 ```bash
-gbfs2osm --gbfs-feed-url https://gbfs.velobixi.com/gbfs/2-2/gbfs.json --output-file output.osm --operator Bixi --network Bixi --use-short-name-for-station-id 
+poetry run gbfs2osm --gbfs-feed-url https://gbfs.velobixi.com/gbfs/2-2/gbfs.json --output-file output.osm --operator Bixi --network Bixi --use-short-name-for-station-id 
 ```
 
 You can then take the output file and open it in JOSM to see the result.
