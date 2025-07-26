@@ -13,7 +13,7 @@ classifiers = [
 authors = ["Émilio Gonzalez"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "src"}]
+packages = [{include = "gbfs2osm"}]
 
 # Dependencies
 [tool.poetry.dependencies]
@@ -26,3 +26,6 @@ OSMPythonTools = "^0.3.6"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+gbfs2osm = "gbfs2osm:main"
