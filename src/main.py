@@ -73,7 +73,7 @@ def convert(
                                  version="1", id=str(-i - 1))
             ET.SubElement(node, "tag", k="bicycle_rental", v="docking_station")
             ET.SubElement(node, "tag", k="amenity", v="bicycle_rental")
-            ET.SubElement(node, "tag", k="name", v=station['name'])
+            ET.SubElement(node, "tag", k="name", v=station['name'].replace('  ', ' ').strip())
             ET.SubElement(node, "tag", k="ref", v=f"gbfs={system_id}:{station['station_id']}")
             ET.SubElement(node, "tag", k="network", v=network)
             ET.SubElement(node, "tag", k="operator", v=operator)
