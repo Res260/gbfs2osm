@@ -142,6 +142,9 @@ def write_tag(node: ET.Element, key: str, value: str, overwrites: list[Overwrite
     """
     Write a tag to the node if it is not already present or if it is in the overwrite list.
     """
+    if value == None:
+        return
+
     if key in overwrites:
         # If the key is in the overwrites list, we overwrite it.
         for tag in node.findall(f'tag[@k="{key}"]'):
