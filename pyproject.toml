@@ -14,7 +14,6 @@ authors = ["Émilio Gonzalez"]
 license = "MIT"
 readme = "README.md"
 packages = [{include = "src"}]
-version = "0.1.0"
 
 # Dependencies
 [tool.poetry.dependencies]
@@ -22,6 +21,7 @@ python = "^3.12"
 rich = "^14.1.0"
 typer = "^0.16.0"
 requests = "^2.32.4"
+OSMPythonTools = "^0.3.6"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
