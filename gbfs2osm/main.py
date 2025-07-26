@@ -1,6 +1,7 @@
 import importlib.metadata
 import logging
 import xml.etree.ElementTree as ET
+from enum import StrEnum
 
 import requests
 import typer
@@ -27,6 +28,18 @@ logging.getLogger('OSMPythonTools').setLevel(logging.ERROR)
 
 version = importlib.metadata.version('gbfs2osm')
 
+class OverwriteFields(StrEnum):
+    CAPACITY = "capacity"
+    NAME = "name"
+    REF_GBFS = "ref:gbfs"
+    NETWORK = "network"
+    OPERATOR = "operator"
+    BRAND = "brand"
+    OPERATOR_PHONE = "operator:phone"
+    OPERATOR_WEBSITE = "operator:website"
+    NETWORK_WIKIDATA = "network:wikidata"
+    OPERATOR_WIKIDATA = "operator:wikidata"
+
 
 @app.command()
 def convert(
@@ -35,7 +48,10 @@ def convert(
     gbfs_feed_url: Annotated[str, typer.Option("--gbfs-feed-url", help="Link to the GBFS endpoint. Example: https://gbfs.velobixi.com/gbfs/2-2/gbfs.json",
                                                prompt="Link to the GBFS endpoint.")] = "https://gbfs.velobixi.com/gbfs/2-2/gbfs.json",
     output_file: Annotated[str, typer.Option("--output-file", help="Path to the output OSM file.", prompt="Path to the output OSM file.")] = "output.osm",
-    use_short_name_for_station_id: Annotated[bool, typer.Option("--use-short-name-for-station-id", help="Use the station's short name as station_id for the ref:gbfs tag. Some bikeshare systems (like Bixi) use changing station_id, and the real station ID is short_name.")] = False
+    use_short_name_for_station_id: Annotated[bool, typer.Option("--use-short-name-for-station-id", help="Use the station's short name as station_id for the ref:gbfs tag. Some bikeshare systems (like Bixi) use changing station_id, and the real station ID is short_name.")] = False,
+    network_wikidata_id: Annotated[str, typer.Option("--network-wikidata-id", help="Wikidata ID of the bikeshare network. This is used to set the wikidata tag on the nodes. Example: Q386")] = None,
+    operator_wikidata_id: Annotated[str, typer.Option("--operator-wikidata-id", help="Wikidata ID of the bikeshare operator. This is used to set the wikidata tag on the nodes. Example: Q386")] = None,
+    overwrites: Annotated[list[OverwriteFields], typer.Option("--overwrite",  help="Overwrite existing tags in OSM nodes. If not specified, only the 'capacity' tag will be overwritten.", show_choices=True, metavar="FIELD")] = [OverwriteFields.CAPACITY, OverwriteFields.REF_GBFS],
 ):
     """
     Convert a GBFS feed to OSM data.
@@ -95,36 +111,43 @@ def convert(
                     if tag_key not in ['capacity']:
                         ET.SubElement(node, "tag", k=tag_key, v=existing_node.tag(tag_key))
 
-            if not node.findall('tag[@k="bicycle_rental"]'):
-                ET.SubElement(node, "tag", k="bicycle_rental", v="docking_station")
-            ET.SubElement(node, "tag", k="amenity", v="bicycle_rental")
-            if not node.findall('tag[@k="name"]'):
-                ET.SubElement(node, "tag", k="name", v=station['name'].replace('  ', ' ').strip())
-            if not node.findall('tag[@k="ref:gbfs"]'):
-                ET.SubElement(node, "tag", k="ref:gbfs", v=f"{system_id}:{station['short_name'] if use_short_name_for_station_id else station['station_id']}")
-            if not node.findall('tag[@k="network"]'):
-                ET.SubElement(node, "tag", k="network", v=network)
-            if not node.findall('tag[@k="operator"]'):
-                ET.SubElement(node, "tag", k="operator", v=operator)
-            if not node.findall('tag[@k="brand"]'):
-                ET.SubElement(node, "tag", k="brand", v=operator)
-            if phone_number and not node.findall('tag[@k="operator:phone"]'):
-                ET.SubElement(node, "tag", k="operator:phone", v=existing_node.tag('operator:phone') if existing_node and existing_node.tag('operator:phone') else phone_number)
-            if url and not node.findall('tag[@k="operator:website"]'):
-                ET.SubElement(node, "tag", k="operator:website", v=existing_node.tag('operator:website') if existing_node and existing_node.tag('operator:website') else url)
+            write_tag(node, key="bicycle_rental", value="docking_station", overwrites=overwrites)
+            write_tag(node, key="amenity", value="bicycle_rental", overwrites=overwrites)
+            write_tag(node, key="name", value=station['name'].replace('  ', ' ').strip(), overwrites=overwrites)
+            write_tag(node, key="ref:gbfs", value=f"{system_id}:{station['short_name'] if use_short_name_for_station_id else station['station_id']}", overwrites=overwrites)
+            write_tag(node, key="network", value=network, overwrites=overwrites)
+            write_tag(node, key="operator", value=operator, overwrites=overwrites)
+            write_tag(node, key="brand", value=operator, overwrites=overwrites)
+            write_tag(node, key="operator:phone", value=phone_number, overwrites=overwrites)
+            write_tag(node, key="operator:website", value=url, overwrites=overwrites)
+            write_tag(node, key="network:wikidata", value=network_wikidata_id, overwrites=overwrites)
+            write_tag(node, key="operator:wikidata", value=operator_wikidata_id, overwrites=overwrites)
 
             if 'capacity' in station:
-                ET.SubElement(node, "tag", k="capacity", v=str(station['capacity']))
+                write_tag(node, key="capacity", value=str(station['capacity']), overwrites=overwrites)
 
             progress.update(task, advance=1, status=station['name'])
 
-    LOG.info(f"Found {number_of_existing_nodes} existing nodes in OpenStreetMap. Only adding tags to those nodes, no overwriting of existing data. The only exception is the 'capacity' tag, which we'll overwrite because the GBFS feed is the source of truth for this data.")
+    LOG.info(f"List of fields that were overwritten if they already existed: {', '.join(overwrites)}")
+    LOG.info(f"Found {number_of_existing_nodes} existing nodes in OpenStreetMap.")
     LOG.info(f"Writing {output_file}...")
     tree = ET.ElementTree(root)
     ET.indent(tree)
     tree.write(output_file, encoding="utf-8", xml_declaration=True)
 
     LOG.info("Conversion complete!")
+
+
+def write_tag(node: ET.Element, key: str, value: str, overwrites: list[OverwriteFields]) -> None:
+    """
+    Write a tag to the node if it is not already present or if it is in the overwrite list.
+    """
+    if key in overwrites:
+        # If the key is in the overwrites list, we overwrite it.
+        for tag in node.findall(f'tag[@k="{key}"]'):
+            node.remove(tag)
+    if not node.findall(f'tag[@k="{key}"]'):
+        ET.SubElement(node, "tag", k=key, v=value)
 
 
 def get(url: str, **kwargs) -> Response:
