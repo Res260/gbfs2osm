@@ -1,0 +1,28 @@
+# Normal poetry project file
+[tool.poetry]
+name = "gbfs2osm"
+version = "0.1.0"
+description = "General Bikeshare Feed (GBFS) to OpenStreetMap (OSM) importer"
+keywords = ["gbfs", "osm", "importer", "bikeshare"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+]
+authors = ["Émilio Gonzalez"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "src"}]
+version = "0.1.0"
+
+# Dependencies
+[tool.poetry.dependencies]
+python = "^3.12"
+rich = "^14.1.0"
+typer = "^0.16.0"
+requests = "^2.32.4"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
