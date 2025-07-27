@@ -31,3 +31,4 @@ jobs:
         poetry run gbfs2osm --gbfs-feed-url https://gbfs.velobixi.com/gbfs/2-2/gbfs.json --output-file output_bixi.osm --operator Bixi --network Bixi --use-short-name-for-station-id --network-wikidata-id Q386 --operator-wikidata-id Q386
         # Bike Share Toronto
         poetry run gbfs2osm --gbfs-feed-url https://tor.publicbikesystem.net/ube/gbfs/v1/gbfs.json --output-file output_bikesharetoronto.osm --operator "Bike Share Toronto" --network bike_share_toronto
+        poetry run gbfs2osm --gbfs-feed-url https://quebec.publicbikesystem.net/customer/ube/gbfs/v1/gbfs.json --output-file output_avelo.osm --operator "Réseau de transport de la Capitale" --network a_velo

@@ -39,6 +39,9 @@ class OverwriteFields(StrEnum):
     OPERATOR_WEBSITE = "operator:website"
     NETWORK_WIKIDATA = "network:wikidata"
     OPERATOR_WIKIDATA = "operator:wikidata"
+    FEE = "fee"
+    PAYMENT_CREDIT_CARDS = "payment:credit_cards"
+    PAYMENT_APP = "payment:app"
 
 
 @app.command()
@@ -89,6 +92,11 @@ def convert(
         task = progress.add_task("Processing stations", total=len(gbfs_station_data), status="")
         for i, station in enumerate(gbfs_station_data):
             progress.update(task, advance=0, status=station['name'])
+
+            if station.get('is_virtual_station', False):
+                LOG.warning(f"Skipping virtual station: {station['name']} ({station['lat']}, {station['lon']}). Details: https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dbicycle_rental")
+                continue
+
             existing_node = None
             # First, we need to check if the station is already in the OSM database.
             # We use the Overpass API to check if there is node near the station's coordinates.
@@ -122,6 +130,11 @@ def convert(
             write_tag(node, key="operator:website", value=url, overwrites=overwrites)
             write_tag(node, key="network:wikidata", value=network_wikidata_id, overwrites=overwrites)
             write_tag(node, key="operator:wikidata", value=operator_wikidata_id, overwrites=overwrites)
+            write_tag(node, key="fee", value="yes", overwrites=overwrites)
+            if "CREDITCARD" in station.get('rental_methods', []):
+                write_tag(node, key="payment:credit_cards", value="yes", overwrites=overwrites)
+            if "PHONE" in station.get('rental_methods', []):
+                write_tag(node, key="payment:app", value="yes", overwrites=overwrites)
 
             if 'capacity' in station:
                 write_tag(node, key="capacity", value=str(station['capacity']), overwrites=overwrites)
