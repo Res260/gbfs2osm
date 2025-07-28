@@ -25,6 +25,8 @@ logging.basicConfig(
 
 LOG = logging.getLogger()
 logging.getLogger('OSMPythonTools').setLevel(logging.ERROR)
+logging.getLogger("requests").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 version = importlib.metadata.version('gbfs2osm')
 
@@ -123,7 +125,6 @@ def convert(
                                  version=str(int(existing_node._json.get('version')) + 1) if existing_node and existing_node._json.get('version') else "1")
             if existing_node:
                 for tag_key in existing_node.tags():
-                    if tag_key not in ['capacity']:
                         ET.SubElement(node, "tag", k=tag_key, v=existing_node.tag(tag_key))
 
             write_tag(node, key="bicycle_rental", value="docking_station", overwrites=overwrites)
@@ -144,6 +145,10 @@ def convert(
                 write_tag(node, key="payment:app", value="yes", overwrites=overwrites)
 
             if 'capacity' in station:
+                if int(station['capacity']) == 0:
+                    LOG.warning(f"Station {station['name']} ({station.get('station_id')}) has a capacity of 0. It is probably out of service. Skipping it entirely")
+                    root.remove(node)
+                    continue
                 write_tag(node, key="capacity", value=str(station['capacity']), overwrites=overwrites)
 
             progress.update(task, advance=1, status=station['name'])
