@@ -42,6 +42,7 @@ class OverwriteFields(StrEnum):
     FEE = "fee"
     PAYMENT_CREDIT_CARDS = "payment:credit_cards"
     PAYMENT_APP = "payment:app"
+    COORDINATES = "coordinates"
 
 
 @app.command()
@@ -51,7 +52,6 @@ def convert(
     gbfs_feed_url: Annotated[str, typer.Option("--gbfs-feed-url", help="Link to the GBFS endpoint. Example: https://gbfs.velobixi.com/gbfs/2-2/gbfs.json",
                                                prompt="Link to the GBFS endpoint.")] = "https://gbfs.velobixi.com/gbfs/2-2/gbfs.json",
     output_file: Annotated[str, typer.Option("--output-file", help="Path to the output OSM file.", prompt="Path to the output OSM file.")] = "output.osm",
-    use_short_name_for_station_id: Annotated[bool, typer.Option("--use-short-name-for-station-id", help="Use the station's short name as station_id for the ref:gbfs tag. Some bikeshare systems (like Bixi) use changing station_id, and the real station ID is short_name.")] = False,
     network_wikidata_id: Annotated[str, typer.Option("--network-wikidata-id", help="Wikidata ID of the bikeshare network. This is used to set the wikidata tag on the nodes. Example: Q386")] = None,
     operator_wikidata_id: Annotated[str, typer.Option("--operator-wikidata-id", help="Wikidata ID of the bikeshare operator. This is used to set the wikidata tag on the nodes. Example: Q386")] = None,
     overwrites: Annotated[list[OverwriteFields], typer.Option("--overwrite",  help="Overwrite existing tags in OSM nodes. If not specified, only the 'capacity' tag will be overwritten.", show_choices=True, metavar="FIELD")] = [OverwriteFields.CAPACITY, OverwriteFields.REF_GBFS],
@@ -109,9 +109,16 @@ def convert(
                     LOG.warning(f"{len(nodes)} nodes already in OpenStreetMap found near {station['name']} ({station['lat']}, {station['lon']}). Using node with ID {existing_node.id()} because it's the closest. However, a cleanup should be performed to remove duplicates before running this tool.")
                 number_of_existing_nodes += 1
 
+            if OverwriteFields.COORDINATES in overwrites and existing_node:
+                lat = str(station['lat'])
+                lon = str(station['lon'])
+            else:
+                lat = str(existing_node.lat() if existing_node else station['lat'])
+                lon = str(existing_node.lon() if existing_node else station['lon'])
+
             node = ET.SubElement(root, "node",
-                                 lat=str(existing_node.lat() if existing_node else station['lat']),
-                                 lon=str(existing_node.lon() if existing_node else station['lon']),
+                                 lat=lat,
+                                 lon=lon,
                                  id=str(existing_node.id() if existing_node else -i - 1),
                                  version=str(int(existing_node._json.get('version')) + 1) if existing_node and existing_node._json.get('version') else "1")
             if existing_node:
@@ -122,7 +129,7 @@ def convert(
             write_tag(node, key="bicycle_rental", value="docking_station", overwrites=overwrites)
             write_tag(node, key="amenity", value="bicycle_rental", overwrites=overwrites)
             write_tag(node, key="name", value=station['name'].replace('  ', ' ').strip(), overwrites=overwrites)
-            write_tag(node, key="ref:gbfs", value=f"{system_id}:{station['short_name'] if use_short_name_for_station_id else station['station_id']}", overwrites=overwrites)
+            write_tag(node, key="ref:gbfs", value=f"{system_id}:{station['station_id']}", overwrites=overwrites)
             write_tag(node, key="network", value=network, overwrites=overwrites)
             write_tag(node, key="operator", value=operator, overwrites=overwrites)
             write_tag(node, key="brand", value=operator, overwrites=overwrites)
@@ -142,7 +149,7 @@ def convert(
             progress.update(task, advance=1, status=station['name'])
 
     LOG.info(f"List of fields that were overwritten if they already existed: {', '.join(overwrites)}")
-    LOG.info(f"Found {number_of_existing_nodes} existing nodes in OpenStreetMap.")
+    LOG.info(f"Found {number_of_existing_nodes} existing nodes in OpenStreetMap. They have been updated.")
     LOG.info(f"Writing {output_file}...")
     tree = ET.ElementTree(root)
     ET.indent(tree)
