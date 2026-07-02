@@ -2,15 +2,18 @@ import importlib.metadata
 import logging
 import xml.etree.ElementTree as ET
 from enum import StrEnum
+from typing import Any
 
 import requests
 import typer
 from OSMPythonTools.element import Element
 from OSMPythonTools.overpass import Overpass, OverpassResult
-from requests import HTTPError, Response
+from requests import Response
+from retry import retry
 from rich.logging import RichHandler
 from rich.progress import Progress, TextColumn, BarColumn, MofNCompleteColumn, TimeRemainingColumn
 from typing_extensions import Annotated
+from urllib.error import HTTPError
 
 app = typer.Typer(name="gbfs2osm", no_args_is_help=True,
                   help="A tool to convert GBFS feeds to OSM data.")
@@ -102,7 +105,7 @@ def convert(
             existing_node = None
             # First, we need to check if the station is already in the OSM database.
             # We use the Overpass API to check if there is node near the station's coordinates.
-            results: OverpassResult = api.query(f'node(around:20, {station['lat']}, {station['lon']})["amenity"="bicycle_rental"];out;')
+            results: OverpassResult = query_stations_near(api, station)
 
             nodes: list[Element] = results.nodes()
             if nodes:
@@ -162,6 +165,14 @@ def convert(
 
     LOG.info("Conversion complete!")
 
+
+@retry(tries=3)
+def query_stations_near(api, station) -> Any:
+    try:
+        return api.query(f'node(around:20, {station['lat']}, {station['lon']})["amenity"="bicycle_rental"];out;')
+    except HTTPError as e:
+        print(e.response.text)
+        raise e
 
 def write_tag(node: ET.Element, key: str, value: str, overwrites: list[OverwriteFields]) -> None:
     """

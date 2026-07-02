@@ -22,7 +22,7 @@ For full documentation, please refer to the [OSM wiki page](https://wiki.openstr
 ## Usage
 
 ```bash
-poetry run gbfs2osm --gbfs-feed-url https://gbfs.velobixi.com/gbfs/2-2/gbfs.json --output-file output.osm --operator Bixi --network Bixi --use-short-name-for-station-id 
+poetry run gbfs2osm --gbfs-feed-url https://gbfs.velobixi.com/gbfs/2-2/gbfs.json --output-file output.osm --operator Bixi --network Bixi 
 ```
 
 You can then take the output file and open it in JOSM to see the result.
