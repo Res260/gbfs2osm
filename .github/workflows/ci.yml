@@ -51,7 +51,7 @@ jobs:
     - name: Tailscale
       uses: tailscale/github-action@v4
       with:
-        oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+        oauth-client-id: ${{ secrets.TS_CLIENT_ID }}
         audience: ${{ secrets.TS_AUDIENCE }}
         tags: tag:gbfs2osm-ci
 
