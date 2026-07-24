@@ -909,10 +909,7 @@ files = [
 ]
 
 [package.dependencies]
-numpy = [
-    {version = ">=1.26.0", markers = "python_version < \"3.14\""},
-    {version = ">=2.3.3", markers = "python_version >= \"3.14\""},
-]
+numpy = {version = ">=2.3.3", markers = "python_version >= \"3.14\""}
 python-dateutil = ">=2.8.2"
 tzdata = {version = "*", markers = "sys_platform == \"win32\" or sys_platform == \"emscripten\""}
 
@@ -1389,5 +1386,5 @@ viz = ["cartopy (>=0.24)", "matplotlib (>=3.10)", "nc-time-axis", "seaborn"]
 
 [metadata]
 lock-version = "2.1"
-python-versions = "^3.12"
-content-hash = "61f1c5219d80ad7339272b7b522dd426289fa39f047abd6a108aedc97f203050"
+python-versions = "^3.14"
+content-hash = "4e7d0e695d89f3057339d68734e2ed26578efa8deeec2f83de8b7492664bda46"

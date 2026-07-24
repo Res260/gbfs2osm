@@ -6,6 +6,9 @@ on:
       - main
   pull_request:
 
+env:
+  PYTHON_VERSION: 3.14
+  COLUMNS: 120
 
 jobs:
   build:
@@ -14,14 +17,30 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v2
 
-    - name: Set up Python
-      uses: actions/setup-python@v2
+    - name: Cache Poetry (pipx) installation
+      id: cache-pipx-poetry
+      uses: actions/cache@v4
       with:
-        python-version: '3.14'
+        path: |
+          ~/.local/pipx/venvs/poetry
+          ~/.local/bin/poetry
+          /opt/pipx/venvs/poetry
+          /opt/pipx_bin/poetry
+        key: pipx-poetry-${{ runner.os }}-${{ env.PYTHON_VERSION }}
+
+    - name: Install Poetry
+      if: steps.cache-pipx-poetry.outputs.cache-hit != 'true'
+      run: pipx install poetry
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'poetry'
 
     - name: Install dependencies
       run: |
-        python -m pip install poetry
+        which poetry
         poetry install
         poetry run gbfs2osm --help
 

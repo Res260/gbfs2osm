@@ -17,7 +17,7 @@ packages = [{include = "gbfs2osm"}]
 
 # Dependencies
 [tool.poetry.dependencies]
-python = "^3.12"
+python = "^3.14"
 rich = "^14.1.0"
 typer = "^0.16.0"
 requests = "^2.32.4"
