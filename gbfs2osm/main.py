@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import Any
 
 import requests
+import time
 import typer
 from OSMPythonTools.element import Element
 from OSMPythonTools.overpass import Overpass, OverpassResult
@@ -89,7 +90,8 @@ def convert(
 
     root = ET.Element("osm", version="0.6", generator=f"gbfs2osm {version}")
 
-    api = Overpass()
+    #api = Overpass(endpoint="https://overpass.private.coffee/api/")
+    api = Overpass(endpoint="https://overpass-api.de/api/")
 
     number_of_existing_nodes = 0
 
@@ -105,6 +107,7 @@ def convert(
             existing_node = None
             # First, we need to check if the station is already in the OSM database.
             # We use the Overpass API to check if there is node near the station's coordinates.
+            time.sleep(1)
             results: OverpassResult = query_stations_near(api, station)
 
             nodes: list[Element] = results.nodes()
@@ -155,6 +158,7 @@ def convert(
                 write_tag(node, key="capacity", value=str(station['capacity']), overwrites=overwrites)
 
             progress.update(task, advance=1, status=station['name'])
+            LOG.info(f"Processed {i + 1}/{len(gbfs_station_data)} stations")
 
     LOG.info(f"List of fields that were overwritten if they already existed: {', '.join(overwrites)}")
     LOG.info(f"Found {number_of_existing_nodes} existing nodes in OpenStreetMap. They have been updated.")
@@ -166,7 +170,7 @@ def convert(
     LOG.info("Conversion complete!")
 
 
-@retry(tries=3)
+@retry(tries=5, delay=60)
 def query_stations_near(api, station) -> Any:
     try:
         return api.query(f'node(around:20, {station['lat']}, {station['lon']})["amenity"="bicycle_rental"];out;')
