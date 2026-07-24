@@ -10,9 +10,13 @@ env:
   PYTHON_VERSION: 3.14
   COLUMNS: 120
 
+permissions:
+  id-token: write # This is required for the Tailscale action to request a JWT from GitHub
+
 jobs:
   build:
     runs-on: self-hosted
+    environment: ci
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
@@ -43,6 +47,13 @@ jobs:
         which poetry
         poetry install
         poetry run gbfs2osm --help
+
+    - name: Tailscale
+      uses: tailscale/github-action@v4
+      with:
+        oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+        audience: ${{ secrets.TS_AUDIENCE }}
+        tags: tag:gbfs2osm-ci
 
     - name: Run end-to-end tests
       run: |
