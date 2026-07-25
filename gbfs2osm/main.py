@@ -175,6 +175,7 @@ def convert(
     LOG.info("Conversion complete!")
 
 
+@retry(tries=5, delay=20)
 @cachier(stale_after=datetime.timedelta(days=3))
 def query_stations(api, min_latitude, min_longitude, max_latitude, max_longitude) -> Any:
     try:
