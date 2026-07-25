@@ -6,30 +6,65 @@ on:
       - main
   pull_request:
 
+env:
+  PYTHON_VERSION: 3.14
+  COLUMNS: 120
+
+permissions:
+  id-token: write # This is required for the Tailscale action to request a JWT from GitHub
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment: ci
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
 
-    - name: Set up Python
-      uses: actions/setup-python@v2
+    - name: Cache Poetry (pipx) installation
+      id: cache-pipx-poetry
+      uses: actions/cache@v4
       with:
-        python-version: '3.14'
+        path: |
+          ~/.local/pipx/venvs/poetry
+          ~/.local/bin/poetry
+          /opt/pipx/venvs/poetry
+          /opt/pipx_bin/poetry
+        key: pipx-poetry-${{ runner.os }}-${{ env.PYTHON_VERSION }}
+
+    - name: Install Poetry
+      if: steps.cache-pipx-poetry.outputs.cache-hit != 'true'
+      run: pipx install poetry
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'poetry'
 
     - name: Install dependencies
       run: |
-        python -m pip install poetry
+        which poetry
         poetry install
         poetry run gbfs2osm --help
 
-    - name: Run end-to-end tests
+    - name: Tailscale
+      uses: tailscale/github-action@v4
+      with:
+        oauth-client-id: ${{ secrets.TS_CLIENT_ID }}
+        audience: ${{ secrets.TS_AUDIENCE }}
+        tags: tag:gbfs2osm-ci
+        args: "--exit-node=${{ vars.TS_EXIT_NODE }}"
+
+    - name: Run end-to-end tests (Bixi Montréal)
       run: |
         # Bixi Montréal
         poetry run gbfs2osm --gbfs-feed-url https://gbfs.velobixi.com/gbfs/2-2/gbfs.json --output-file output_bixi.osm --operator Bixi --network Bixi --network-wikidata-id Q386 --operator-wikidata-id Q386 --overwrite "capacity" --overwrite "operator:wikidata" --overwrite "network:wikidata" --overwrite "ref:gbfs" --overwrite coordinates
+    - name: Run end-to-end tests (Bike Share Toronto)
+      run: |
         # Bike Share Toronto
         poetry run gbfs2osm --gbfs-feed-url https://tor.publicbikesystem.net/ube/gbfs/v1/gbfs.json --output-file output_bikesharetoronto.osm --operator "Bike Share Toronto" --network bike_share_toronto
+    - name: Run end-to-end tests (àVélo Québec)
+      run: |
         # àVélo Québec
         poetry run gbfs2osm --gbfs-feed-url https://quebec.publicbikesystem.net/customer/ube/gbfs/v1/gbfs.json --output-file output_avelo.osm --operator "Réseau de transport de la Capitale" --network a_velo
