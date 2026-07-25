@@ -1,8 +1,10 @@
+import datetime
 import importlib.metadata
 import logging
 import xml.etree.ElementTree as ET
 from enum import StrEnum
 from typing import Any
+from cachier import cachier
 
 import requests
 import time
@@ -65,7 +67,6 @@ def convert(
     """
     Convert a GBFS feed to OSM data.
     """
-    # time.sleep(0.4)
     LOG.info(f"Fetching GBFS information at {gbfs_feed_url}")
     gbfs_data = get(gbfs_feed_url).json()
     gbfs_station_url = list(filter(lambda feed: feed['name'] == 'station_information', gbfs_data['data']['en']['feeds']))[0]['url']
@@ -86,7 +87,8 @@ def convert(
     url = response['data'].get('url')
 
     response = get(gbfs_station_url).json()
-    gbfs_station_data = response['data']['stations']
+    gbfs_station_data = [station for station in response['data']['stations'] if station.get('is_virtual_station', False) is False]
+    LOG.info(f"Found {len(gbfs_station_data)} stations in the GBFS feed.")
 
     root = ET.Element("osm", version="0.6", generator=f"gbfs2osm {version}")
 
@@ -95,26 +97,30 @@ def convert(
 
     number_of_existing_nodes = 0
 
-    with Progress(TextColumn("[task.description]{task.description}"), BarColumn(), MofNCompleteColumn(), TimeRemainingColumn(), TextColumn("{task.fields[status]}")) as progress:
-        task = progress.add_task("Processing stations", total=len(gbfs_station_data), status="")
+    min_longitude = min(station['lon'] for station in gbfs_station_data if station['lon'] != 0) - 0.0005
+    max_longitude = max(station['lon'] for station in gbfs_station_data if station['lon'] != 0) + 0.0005
+    min_latitude = min(station['lat'] for station in gbfs_station_data if station['lat'] != 0) - 0.0005
+    max_latitude = max(station['lat'] for station in gbfs_station_data if station['lat'] != 0) + 0.0005
+
+    LOG.info(f"Bounding box of stations: {min_latitude}, {min_longitude}, {max_latitude}, {max_longitude}")
+    LOG.info("Fetching existing stations in Overpass")
+    results: OverpassResult = query_stations(api, min_latitude, min_longitude, max_latitude, max_longitude)
+
+    nodes: list[Element] = results.nodes()
+
+    LOG.info(f"Found {len(nodes)} existing nodes in OpenStreetMap")
+
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeRemainingColumn(),
+        ) as progress:
+        task = progress.add_task("Processing stations...", total=len(gbfs_station_data))
         for i, station in enumerate(gbfs_station_data):
-            progress.update(task, advance=0, status=station['name'])
 
-            if station.get('is_virtual_station', False):
-                LOG.warning(f"Skipping virtual station: {station['name']} ({station['lat']}, {station['lon']}). Details: https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dbicycle_rental")
-                continue
-
-            existing_node = None
-            # First, we need to check if the station is already in the OSM database.
-            # We use the Overpass API to check if there is node near the station's coordinates.
-            time.sleep(1)
-            results: OverpassResult = query_stations_near(api, station)
-
-            nodes: list[Element] = results.nodes()
-            if nodes:
-                existing_node = find_closest_node(station['lat'], station['lon'], nodes)
-                if len(nodes) > 1:
-                    LOG.warning(f"{len(nodes)} nodes already in OpenStreetMap found near {station['name']} ({station['lat']}, {station['lon']}). Using node with ID {existing_node.id()} because it's the closest. However, a cleanup should be performed to remove duplicates before running this tool.")
+            existing_node, distance = find_closest_node(station['lat'], station['lon'], nodes)
+            if distance < 20:
                 number_of_existing_nodes += 1
 
             if OverwriteFields.COORDINATES in overwrites and existing_node:
@@ -125,10 +131,10 @@ def convert(
                 lon = str(existing_node.lon() if existing_node else station['lon'])
 
             node = ET.SubElement(root, "node",
-                                 lat=lat,
-                                 lon=lon,
-                                 id=str(existing_node.id() if existing_node else -i - 1),
-                                 version=str(int(existing_node._json.get('version')) + 1) if existing_node and existing_node._json.get('version') else "1")
+                                lat=lat,
+                                lon=lon,
+                                id=str(existing_node.id() if existing_node else -i - 1),
+                                version=str(int(existing_node._json.get('version')) + 1) if existing_node and existing_node._json.get('version') else "1")
             if existing_node:
                 for tag_key in existing_node.tags():
                         ET.SubElement(node, "tag", k=tag_key, v=existing_node.tag(tag_key))
@@ -154,11 +160,10 @@ def convert(
                 if int(station['capacity']) == 0:
                     LOG.warning(f"Station {station['name']} ({station.get('station_id')}) has a capacity of 0. It is probably out of service. Skipping it entirely")
                     root.remove(node)
-                    continue
+                    #continue
                 write_tag(node, key="capacity", value=str(station['capacity']), overwrites=overwrites)
 
-            progress.update(task, advance=1, status=station['name'])
-            LOG.info(f"Processed {i + 1}/{len(gbfs_station_data)} stations")
+            progress.advance(task, advance=1)
 
     LOG.info(f"List of fields that were overwritten if they already existed: {', '.join(overwrites)}")
     LOG.info(f"Found {number_of_existing_nodes} existing nodes in OpenStreetMap. They have been updated.")
@@ -170,10 +175,15 @@ def convert(
     LOG.info("Conversion complete!")
 
 
-@retry(tries=5, delay=60)
-def query_stations_near(api, station) -> Any:
+@cachier(stale_after=datetime.timedelta(days=3))
+def query_stations(api, min_latitude, min_longitude, max_latitude, max_longitude) -> Any:
     try:
-        return api.query(f'node(around:20, {station['lat']}, {station['lon']})["amenity"="bicycle_rental"];out;')
+        return api.query(f'''
+node
+  ["amenity"="bicycle_rental"]
+  ({min_latitude},{min_longitude},{max_latitude},{max_longitude});
+out body;
+''')
     except HTTPError as e:
         print(e.response.text)
         raise e
@@ -208,18 +218,39 @@ def get(url: str, **kwargs) -> Response:
         raise e
 
 
-def find_closest_node(lat: float, lon: float, nodes: list[Element]) -> Element:
+def find_closest_node(lat: float, lon: float, nodes: list[Element]) -> tuple[Element, float]:
     """
     Find the closest node to the specified latitude and longitude.
     """
     closest_node = None
     min_distance = float('inf')
     for node in nodes:
-        distance = ((node.lat() - lat) ** 2 + (node.lon() - lon) ** 2) ** 0.5
+        distance = haversine(node.lat(), node.lon(), lat, lon)
         if distance < min_distance:
             min_distance = distance
             closest_node = node
-    return closest_node
+    return closest_node, min_distance
+
+
+from math import radians, sin, cos, sqrt, atan2
+EARTH_RADIUS = 6_371_000  # meters
+
+def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Return the great-circle distance between two points in meters."""
+
+    lat1, lon1, lat2, lon2 = map(radians, (lat1, lon1, lat2, lon2))
+
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+
+    a = (
+        sin(dlat / 2) ** 2
+        + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+    )
+
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+
+    return EARTH_RADIUS * c
 
 
 app()
