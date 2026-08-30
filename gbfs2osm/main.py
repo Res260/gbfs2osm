@@ -139,6 +139,11 @@ def convert(
         task = progress.add_task("Processing stations...", total=len(gbfs_station_data))
         for i, station in enumerate(gbfs_station_data):
 
+            if station_out_of_service(station):
+                LOG.warning(f"Station {station['name']} ({station.get('station_id')}) skipped: 0 lat/lon or capacity 0. It is probably out of service.")
+                progress.advance(task, advance=1)
+                continue
+
             existing_node, distance = find_closest_node(station['lat'], station['lon'], nodes)
             if distance < 20:
                 number_of_existing_nodes += 1
@@ -188,10 +193,6 @@ def convert(
                 write_tag(node, key="capacity:charging_station", value="yes", overwrites=overwrites)
 
             if 'capacity' in station:
-                if int(station['capacity']) == 0:
-                    LOG.warning(f"Station {station['name']} ({station.get('station_id')}) has a capacity of 0. It is probably out of service. Skipping it entirely")
-                    root.remove(node)
-                    #continue
                 write_tag(node, key="capacity", value=str(station['capacity']), overwrites=overwrites)
 
             progress.advance(task, advance=1)
@@ -219,6 +220,18 @@ out body;
     except HTTPError as e:
         print(e.response.text)
         raise e
+
+def station_out_of_service(station: dict) -> bool:
+    """
+    Return True for stations that should not be imported such as station with a lat or lon of 0 or
+    an explicit capacity of 0 (station is removed or retired).
+    """
+    if station['lat'] == 0 or station['lon'] == 0:
+        return True
+    if 'capacity' in station and int(station['capacity']) == 0:
+        return True
+    return False
+
 
 def write_tag(node: ET.Element, key: str, value: str, overwrites: list[OverwriteFields]) -> None:
     """
