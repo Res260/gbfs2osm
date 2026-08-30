@@ -50,7 +50,27 @@ class OverwriteFields(StrEnum):
     FEE = "fee"
     PAYMENT_CREDIT_CARDS = "payment:credit_cards"
     PAYMENT_APP = "payment:app"
+    PAYMENT_MEMBERSHIP_CARD = "payment:membership_card"
+    PAYMENT_CONTACTLESS = "payment:contactless"
+    PAYMENT_APPLE_PAY = "payment:apple_pay"
+    PAYMENT_GOOGLE_PAY = "payment:google_pay"
+    # Left unimplemented pending confirmation of the right tag because the OSM wiki has no established key for these.
+    # PAYMENT_TRANSIT_CARD = "payment:transit_card"
+    # PAYMENT_ACCOUNT_NUMBER = "payment:account_number"
+    KIOSK = "kiosk"
+    CAPACITY_CHARGING_STATION = "capacity:charging_station"
     COORDINATES = "coordinates"
+
+
+# Maps GBFS station_information.json `rental_methods` enum values to OSM payment:* keys.
+RENTAL_METHOD_TAGS = {
+    "key": "payment:membership_card",
+    "creditcard": "payment:credit_cards",
+    "paypass": "payment:contactless",
+    "applepay": "payment:apple_pay",
+    "androidpay": "payment:google_pay",
+    "phone": "payment:app",
+}
 
 
 @app.command()
@@ -151,10 +171,21 @@ def convert(
             write_tag(node, key="network:wikidata", value=network_wikidata_id, overwrites=overwrites)
             write_tag(node, key="operator:wikidata", value=operator_wikidata_id, overwrites=overwrites)
             write_tag(node, key="fee", value="yes", overwrites=overwrites)
-            if "CREDITCARD" in station.get('rental_methods', []):
-                write_tag(node, key="payment:credit_cards", value="yes", overwrites=overwrites)
-            if "PHONE" in station.get('rental_methods', []):
-                write_tag(node, key="payment:app", value="yes", overwrites=overwrites)
+
+            for payment_method in station.get('rental_methods', []):
+                # Lower-case each method before lookup: some feeds still use upper case with v2.x, but GBFS v3.x expects all enum values to be lower case.
+                osm_key = RENTAL_METHOD_TAGS.get(str(payment_method).lower())
+                if osm_key:
+                    write_tag(node, key=osm_key, value="yes", overwrites=overwrites)
+                else:
+                    LOG.debug(f"Unmapped rental_method {payment_method!r} at station {station.get('station_id')}")
+
+            # Pending confirmation on whether if we should add this new tag to OSM.
+            if 'has_kiosk' in station:
+                write_tag(node, key="kiosk", value="yes" if station['has_kiosk'] else "no", overwrites=overwrites)
+
+            if station.get('is_charging_station'):
+                write_tag(node, key="capacity:charging_station", value="yes", overwrites=overwrites)
 
             if 'capacity' in station:
                 if int(station['capacity']) == 0:

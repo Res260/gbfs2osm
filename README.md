@@ -13,6 +13,8 @@ based on locations.
 
 For full documentation, please refer to the [OSM wiki page](https://wiki.openstreetmap.org/wiki/Gbfs2osm).
 
+The latest GBFS feed fields can be found here: [https://github.com/MobilityData/gbfs/blob/master/gbfs.md#station_informationjson](https://github.com/MobilityData/gbfs/blob/master/gbfs.md#station_informationjson).
+
 ## Installation
 
 1. Install python 3.12+
