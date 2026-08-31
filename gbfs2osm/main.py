@@ -54,9 +54,8 @@ class OverwriteFields(StrEnum):
     PAYMENT_CONTACTLESS = "payment:contactless"
     PAYMENT_APPLE_PAY = "payment:apple_pay"
     PAYMENT_GOOGLE_PAY = "payment:google_pay"
-    # Left unimplemented pending confirmation of the right tag because the OSM wiki has no established key for these.
-    # PAYMENT_TRANSIT_CARD = "payment:transit_card"
-    # PAYMENT_ACCOUNT_NUMBER = "payment:account_number"
+    PAYMENT_TRANSIT_CARD = "payment:transit_card"
+    PAYMENT_ACCOUNT_NUMBER = "payment:account_number"
     KIOSK = "kiosk"
     CAPACITY_CHARGING_STATION = "capacity:charging_station"
     COORDINATES = "coordinates"
@@ -69,6 +68,9 @@ RENTAL_METHOD_TAGS = {
     "paypass": "payment:contactless",
     "applepay": "payment:apple_pay",
     "androidpay": "payment:google_pay",
+    # Pending confirmation of the tag name because the OSM wiki has no established key for these.
+    "transitcard": "payment:transit_card",
+    "accountnumber": "payment:account_number",
     "phone": "payment:app",
 }
 
@@ -126,6 +128,7 @@ def convert(
     LOG.info("Fetching existing stations in Overpass")
     results: OverpassResult = query_stations(api, min_latitude, min_longitude, max_latitude, max_longitude)
 
+    # Existing nodes from OSM database
     nodes: list[Element] = results.nodes()
 
     LOG.info(f"Found {len(nodes)} existing nodes in OpenStreetMap")
@@ -221,10 +224,11 @@ out body;
         print(e.response.text)
         raise e
 
+
 def station_out_of_service(station: dict) -> bool:
     """
     Return True for stations that should not be imported such as station with a lat or lon of 0 or
-    an explicit capacity of 0 (station is removed or retired).
+    an a station with a capacity of 0 is either removed or retired.
     """
     if station['lat'] == 0 or station['lon'] == 0:
         return True
