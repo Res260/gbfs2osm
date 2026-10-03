@@ -68,7 +68,6 @@ RENTAL_METHOD_TAGS = {
     "paypass": "payment:contactless",
     "applepay": "payment:apple_pay",
     "androidpay": "payment:google_pay",
-    # Pending confirmation of the tag name because the OSM wiki has no established key for these.
     "transitcard": "payment:transit_card",
     "accountnumber": "payment:account_number",
     "phone": "payment:app",
@@ -193,7 +192,6 @@ def convert(
                 else:
                     LOG.debug(f"Unmapped rental_method {payment_method!r} at station {station.get('station_id')}")
 
-            # Pending confirmation on whether if we should add this new tag to OSM.
             if 'has_kiosk' in station:
                 write_tag(node, key="kiosk", value="yes" if station['has_kiosk'] else "no", overwrites=overwrites)
 
