@@ -148,9 +148,12 @@ def convert(
                 continue
 
             existing_node, distance = find_closest_node(station['lat'], station['lon'], nodes)
-            if distance < 20:
+            if distance < 10:
                 number_of_existing_nodes += 1
+            else:
+                existing_node = None
 
+            # If a station already exists in OSM, keep the same coords
             if OverwriteFields.COORDINATES in overwrites and existing_node:
                 lat = str(station['lat'])
                 lon = str(station['lon'])
@@ -158,6 +161,7 @@ def convert(
                 lat = str(existing_node.lat() if existing_node else station['lat'])
                 lon = str(existing_node.lon() if existing_node else station['lon'])
 
+            # New nodes get a unique negative placeholder id (OSM convention); the server assigns the real id on upload.
             node = ET.SubElement(root, "node",
                                 lat=lat,
                                 lon=lon,
@@ -170,6 +174,7 @@ def convert(
             write_tag(node, key="bicycle_rental", value="docking_station", overwrites=overwrites)
             write_tag(node, key="amenity", value="bicycle_rental", overwrites=overwrites)
             write_tag(node, key="name", value=station['name'].replace('  ', ' ').strip(), overwrites=overwrites)
+            write_tag(node, key="ref", value=str(station['station_id']), overwrites=overwrites)
             write_tag(node, key="ref:gbfs", value=f"{system_id}:{station['station_id']}", overwrites=overwrites)
             write_tag(node, key="network", value=network, overwrites=overwrites)
             write_tag(node, key="operator", value=operator, overwrites=overwrites)
@@ -227,8 +232,11 @@ out body;
 
 def station_out_of_service(station: dict) -> bool:
     """
-    Return True for stations that should not be imported such as station with a lat or lon of 0 or
-    an a station with a capacity of 0 is either removed or retired.
+    Return True if the station should be skipped during import.
+
+    A station is skipped if:
+    - its lat or lon is 0, or
+    - its capacity is 0 (the station has been removed or retired).
     """
     if station['lat'] == 0 or station['lon'] == 0:
         return True
