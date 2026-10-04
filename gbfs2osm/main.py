@@ -50,7 +50,28 @@ class OverwriteFields(StrEnum):
     FEE = "fee"
     PAYMENT_CREDIT_CARDS = "payment:credit_cards"
     PAYMENT_APP = "payment:app"
+    PAYMENT_MEMBERSHIP_CARD = "payment:membership_card"
+    PAYMENT_CONTACTLESS = "payment:contactless"
+    PAYMENT_APPLE_PAY = "payment:apple_pay"
+    PAYMENT_GOOGLE_PAY = "payment:google_pay"
+    PAYMENT_TRANSIT_CARD = "payment:transit_card"
+    PAYMENT_ACCOUNT_NUMBER = "payment:account_number"
+    KIOSK = "kiosk"
+    CAPACITY_CHARGING_STATION = "capacity:charging_station"
     COORDINATES = "coordinates"
+
+
+# Maps GBFS station_information.json `rental_methods` enum values to OSM payment:* keys.
+RENTAL_METHOD_TAGS = {
+    "key": "payment:membership_card",
+    "creditcard": "payment:credit_cards",
+    "paypass": "payment:contactless",
+    "applepay": "payment:apple_pay",
+    "androidpay": "payment:google_pay",
+    "transitcard": "payment:transit_card",
+    "accountnumber": "payment:account_number",
+    "phone": "payment:app",
+}
 
 
 @app.command()
@@ -106,9 +127,12 @@ def convert(
     LOG.info("Fetching existing stations in Overpass")
     results: OverpassResult = query_stations(api, min_latitude, min_longitude, max_latitude, max_longitude)
 
+    # Existing nodes from OSM database
     nodes: list[Element] = results.nodes()
 
     LOG.info(f"Found {len(nodes)} existing nodes in OpenStreetMap")
+
+    PROXIMITY_THRESHOLD_M = 20
 
     with Progress(
         TextColumn("[progress.description]{task.description}"),
@@ -119,10 +143,18 @@ def convert(
         task = progress.add_task("Processing stations...", total=len(gbfs_station_data))
         for i, station in enumerate(gbfs_station_data):
 
-            existing_node, distance = find_closest_node(station['lat'], station['lon'], nodes)
-            if distance < 20:
-                number_of_existing_nodes += 1
+            if station_out_of_service(station):
+                LOG.warning(f"Station {station['name']} ({station.get('station_id')}) skipped: 0 lat/lon or capacity 0. It is probably out of service.")
+                progress.advance(task, advance=1)
+                continue
 
+            existing_node, distance = find_closest_node(station['lat'], station['lon'], nodes)
+            if distance < PROXIMITY_THRESHOLD_M:
+                number_of_existing_nodes += 1
+            else:
+                existing_node = None
+
+            # If a station already exists in OSM, keep the same coords
             if OverwriteFields.COORDINATES in overwrites and existing_node:
                 lat = str(station['lat'])
                 lon = str(station['lon'])
@@ -130,6 +162,7 @@ def convert(
                 lat = str(existing_node.lat() if existing_node else station['lat'])
                 lon = str(existing_node.lon() if existing_node else station['lon'])
 
+            # New nodes get a unique negative placeholder id (OSM convention); the server assigns the real id on upload.
             node = ET.SubElement(root, "node",
                                 lat=lat,
                                 lon=lon,
@@ -142,6 +175,7 @@ def convert(
             write_tag(node, key="bicycle_rental", value="docking_station", overwrites=overwrites)
             write_tag(node, key="amenity", value="bicycle_rental", overwrites=overwrites)
             write_tag(node, key="name", value=station['name'].replace('  ', ' ').strip(), overwrites=overwrites)
+            write_tag(node, key="ref", value=str(station['station_id']), overwrites=overwrites)
             write_tag(node, key="ref:gbfs", value=f"{system_id}:{station['station_id']}", overwrites=overwrites)
             write_tag(node, key="network", value=network, overwrites=overwrites)
             write_tag(node, key="operator", value=operator, overwrites=overwrites)
@@ -151,16 +185,22 @@ def convert(
             write_tag(node, key="network:wikidata", value=network_wikidata_id, overwrites=overwrites)
             write_tag(node, key="operator:wikidata", value=operator_wikidata_id, overwrites=overwrites)
             write_tag(node, key="fee", value="yes", overwrites=overwrites)
-            if "CREDITCARD" in station.get('rental_methods', []):
-                write_tag(node, key="payment:credit_cards", value="yes", overwrites=overwrites)
-            if "PHONE" in station.get('rental_methods', []):
-                write_tag(node, key="payment:app", value="yes", overwrites=overwrites)
+
+            for payment_method in station.get('rental_methods', []):
+                # Lower-case each method before lookup: some feeds still use upper case with v2.x, but GBFS v3.x expects all enum values to be lower case.
+                osm_key = RENTAL_METHOD_TAGS.get(str(payment_method).lower())
+                if osm_key:
+                    write_tag(node, key=osm_key, value="yes", overwrites=overwrites)
+                else:
+                    LOG.debug(f"Unmapped rental_method {payment_method!r} at station {station.get('station_id')}")
+
+            if 'has_kiosk' in station:
+                write_tag(node, key="kiosk", value="yes" if station['has_kiosk'] else "no", overwrites=overwrites)
+
+            if station.get('is_charging_station'):
+                write_tag(node, key="capacity:charging_station", value="yes", overwrites=overwrites)
 
             if 'capacity' in station:
-                if int(station['capacity']) == 0:
-                    LOG.warning(f"Station {station['name']} ({station.get('station_id')}) has a capacity of 0. It is probably out of service. Skipping it entirely")
-                    root.remove(node)
-                    #continue
                 write_tag(node, key="capacity", value=str(station['capacity']), overwrites=overwrites)
 
             progress.advance(task, advance=1)
@@ -188,6 +228,22 @@ out body;
     except HTTPError as e:
         print(e.response.text)
         raise e
+
+
+def station_out_of_service(station: dict) -> bool:
+    """
+    Return True if the station should be skipped during import.
+
+    A station is skipped if:
+    - its lat or lon is 0, or
+    - its capacity is 0 (the station has been removed or retired).
+    """
+    if station['lat'] == 0 or station['lon'] == 0:
+        return True
+    if 'capacity' in station and int(station['capacity']) == 0:
+        return True
+    return False
+
 
 def write_tag(node: ET.Element, key: str, value: str, overwrites: list[OverwriteFields]) -> None:
     """
