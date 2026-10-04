@@ -132,6 +132,8 @@ def convert(
 
     LOG.info(f"Found {len(nodes)} existing nodes in OpenStreetMap")
 
+    PROXIMITY_THRESHOLD_M = 20
+
     with Progress(
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
@@ -147,7 +149,7 @@ def convert(
                 continue
 
             existing_node, distance = find_closest_node(station['lat'], station['lon'], nodes)
-            if distance < 10:
+            if distance < PROXIMITY_THRESHOLD_M:
                 number_of_existing_nodes += 1
             else:
                 existing_node = None
